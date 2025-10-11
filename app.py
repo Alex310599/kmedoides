@@ -4,8 +4,12 @@ import numpy as np
 import pickle
 import os
 
-# --- Cargar modelo y datos desde pickle ---
-with open("modelo_recomendador.pkl", "rb") as f:
+# --- Definir ruta base ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# --- Cargar modelo ---
+model_path = os.path.join(BASE_DIR, "modelo_recomendador.pkl")
+with open(model_path, "rb") as f:
     saved = pickle.load(f)
 
 kproto = saved["kproto"]
@@ -14,35 +18,27 @@ cluster_info = saved["cluster_info"]
 numerical_cols = saved["numerical_cols"]
 categorical_cols = saved["categorical_cols"]
 
-# --- Cargar base original solo para selectbox ---
-base_path = os.path.dirname(__file__)
-excel_path = os.path.join(base_path, "bdd", "bdd_limpia", "base_turismo_clean.xlsx")
-
-# --- Cargar base ---
+# --- Cargar base original ---
+excel_path = os.path.join(BASE_DIR, "bdd", "bdd_limpia", "base_turismo_clean.xlsx")
 base_turismo = pd.read_excel(excel_path)
 
+# Convertir categorías a string
 for col in categorical_cols:
     base_turismo[col] = base_turismo[col].astype(str)
 
 categorical_idx = [len(numerical_cols) + i for i in range(len(categorical_cols))]
 
-# --- Streamlit ---
+# --- Configurar Streamlit ---
 st.set_page_config(page_title="Recomendador Turístico", layout="centered")
 st.title("🌴 Recomendador Turístico con K-Prototypes")
 
 # Entradas del usuario
 mes_viaje = st.selectbox("Mes de viaje", sorted(base_turismo["mes_viaje"].unique()))
-num_noches = st.number_input(
-    "Número de noches a viajar", min_value=1, max_value=30, value=2
-)
-presupuesto = st.number_input(
-    "Presupuesto total (USD)", min_value=10, max_value=10000, value=100
-)
+num_noches = st.number_input("Número de noches a viajar", 1, 30, 2)
+presupuesto = st.number_input("Presupuesto total (USD)", 10, 10000, 100)
 
 
-# --- Función de recomendación ---
 def recomendar_usuario(mes, noches, presupuesto):
-    # Construir DataFrame con las columnas correctas
     input_df = pd.DataFrame(
         [
             {
@@ -54,19 +50,11 @@ def recomendar_usuario(mes, noches, presupuesto):
     input_df.at[0, "mes_viaje"] = mes
     input_df.at[0, "num_noches_durmieron"] = noches
 
-    # Escalar numéricas usando DataFrame para evitar warning
     input_df[numerical_cols] = scaler.transform(input_df[numerical_cols])
-
-    # Convertir a array para K-Prototypes
     input_array = input_df.to_numpy()
 
-    # Predecir cluster
     cluster_pred = kproto.predict(input_array, categorical=categorical_idx)[0]
-
-    # Información del cluster
     info = cluster_info[cluster_pred]
-
-    # Gasto estimado aplicando proporciones al presupuesto del usuario
     gasto_estimado = {
         k: round(v * presupuesto, 2) for k, v in info["proporciones_gasto"].items()
     }
@@ -79,7 +67,6 @@ def recomendar_usuario(mes, noches, presupuesto):
     }
 
 
-# --- Botón de recomendación ---
 if st.button("Recomendar viaje"):
     resultado = recomendar_usuario(mes_viaje, num_noches, presupuesto)
 
